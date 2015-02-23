@@ -1,0 +1,13 @@
+Wilmington proof of concept
+
+Boston
+- code enforcement - building and property violations
+  https://data.cityofboston.gov/Permitting/Code-Enforcement-Building-and-Property-Violations/8sq6-p7et
+  
+- master address list
+  https://data.cityofboston.gov/City-Services/Master-Address-List/t85d-b449
+  
+- Mayor's 24 hour hotline, service requests
+  https://data.cityofboston.gov/City-Services/Mayor-s-24-Hour-Hotline-Service-Requests/awu8-dc52
+
+property_id is key

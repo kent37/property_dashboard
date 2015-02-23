@@ -1,0 +1,112 @@
+---
+title: "Boston Address Lookup"
+author: "Kent Johnson"
+date: "February 21, 2015"
+output:
+  html_document:
+    keep_md: yes
+runtime: shiny
+---
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo=FALSE,comment=NA, warning=FALSE, message=FALSE)
+#options(shiny.error=browser)
+library(leaflet)
+library(RSocrata)
+library(stringr)
+
+inputPanel(
+  textInput('street_number', 'Number:', '347'),
+  textInput('street', 'Street:', 'Meridian St'),
+  submitButton('Update')
+)
+
+mad = reactive({
+  mad_url = paste0('https://data.cityofboston.gov/resource/t85d-b449.csv?p_streetnumber=', input$street_number, '&p_streetname=', input$street)
+  mad = read.socrata(mad_url)
+  mad = mad[,c('Property_ID', 'location', 'Unit', 'Geocoded_Location')]
+  names(mad) = c('Property ID', 'Location', 'Unit', 'Geocoded_Location')
+  mad
+})
+
+renderTable(mad()[,c('Property ID', 'Location', 'Unit')])
+```
+
+#### Mayor's 24 Hour Hotline, Service Requests
+
+```{r}
+# Break queries up into 5 pids at a time to avoid too long of a query
+mayor = reactive({
+  pid = mad()$`Property ID`
+  mayor = NULL
+  for (i in seq(1, length(pid), 5))
+  {
+    pids = na.omit(pid[i:(i+4)])
+    where_clause = paste0('$where=', paste0('property_id=\'', pids, collapse='\' OR '))
+    mayor_url = paste0('https://data.cityofboston.gov/resource/awu8-dc52.csv?', where_clause, '\'')
+    
+    mayor1 = read.socrata(mayor_url)
+    if (nrow(mayor1) > 0) mayor = rbind(mayor, mayor1)
+    break
+  }
+  if (!is.null(mayor) && nrow(mayor) > 0)
+  {
+    m = mayor[,c('SUBJECT', 'REASON', 'TYPE', 'CASE_STATUS', 'Source', 'OPEN_DT', 'CLOSED_DT')]
+    names(m) = c('Subject', 'Reason', 'Type', 'Status', 'Source', 'Open Date', 'Closed Date')
+    m$`Open Date` = format(m$`Open Date`, "%Y-%m-%d")
+    m$`Closed Date` = format(m$`Closed Date`, "%Y-%m-%d")
+    m = m[order(m$`Open Date`, decreasing=TRUE),]
+    m
+  }
+  else data.frame()
+})
+renderDataTable(mayor())
+```
+
+#### Code Enforcement - Building and Property Violations
+
+```{r}
+
+code = reactive({
+  pid = mad()$`Property ID`
+  code = NULL
+  for (i in seq(1, length(pid), 5))
+  {
+    pids = na.omit(pid[i:(i+4)])
+    where_clause = paste0('$where=', paste0('property_id=', pids, collapse=' OR '))
+    code_url = paste0('https://data.cityofboston.gov/resource/8sq6-p7et.csv?', where_clause)
+    
+    code1 = read.socrata(code_url)
+    if (nrow(code1) > 0) code = rbind(code, code1)
+  }
+  
+  if (!is.null(code) && nrow(code) > 0)
+  { 
+    code = code[, c('Description', 'Status', 'Status_DTTM')]
+    names(code)[3] = 'Date'
+    code$Date = format(code$Date, "%Y-%m-%d")
+    code = code[order(code$Date, decreasing=TRUE),]
+    code
+  } else data.frame()
+})
+
+renderDataTable(code())
+```
+
+```{r}
+# Map
+#renderTable(mad())
+renderLeaflet({
+  location = mad()[1, 'Geocoded_Location']
+  location = str_match(location, '\\((.*), (.*)\\)')
+  lat = location[1,2]
+  lon = location[1,3]
+  
+  map = leaflet() %>% addTiles() %>% 
+  setView(lon, lat, zoom = 14) %>%
+    addMarkers(lon, lat)
+  map
+
+})
+```
+

@@ -1,0 +1,105 @@
+---
+title: "Boston Address Lookup"
+author: "Kent Johnson"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+```{r parameters, echo=FALSE,include=FALSE,message=FALSE}
+library(leaflet)
+library(pander)
+library(rgdal)
+library(RSocrata)
+library(stringr)
+knitr::opts_chunk$set(echo=FALSE,fig.width=10, fig.height=8, comment=NA, warning=FALSE, message=FALSE)
+options(width=120)
+panderOptions("table.split.table", Inf)
+
+street_number = 1015
+street = "Dorchester Ave"
+street_number = 125
+street = "Amory St"
+street_number = 347
+street = "Meridian St"
+```
+
+Showing data for `r paste(street_number, street)`.
+
+```{r}
+mad_url = paste0('https://data.cityofboston.gov/resource/t85d-b449.csv?p_streetnumber=', street_number, '&p_streetname=', street)
+mad = read.socrata(mad_url)
+
+pander(mad[,c('Property_ID', 'location', 'Unit')])
+
+pid = mad$Property_ID
+
+location = mad[1, 'Geocoded_Location']
+location = str_match(location, '\\((.*), (.*)\\)')
+lat = location[1,2]
+lon = location[1,3]
+```
+
+#### Mayor's 24 Hour Hotline, Service Requests
+
+```{r}
+# Break queries up into 5 pids at a time to avoid too long of a query
+mayor = NULL
+for (i in seq(1, length(pid), 5))
+{
+  pids = na.omit(pid[i:(i+4)])
+  where_clause = paste0('$where=', paste0('property_id=\'', pids, collapse='\' OR '))
+  mayor_url = paste0('https://data.cityofboston.gov/resource/awu8-dc52.csv?', where_clause, '\'')
+  
+  mayor1 = read.socrata(mayor_url)
+  if (nrow(mayor1) > 0) mayor = rbind(mayor, mayor1)
+}
+
+if (!is.null(mayor) && nrow(mayor) > 0)
+{
+  m = mayor[,c('SUBJECT', 'REASON', 'TYPE', 'CASE_STATUS', 'Source', 'OPEN_DT', 'CLOSED_DT')]
+  names(m) = c('Subject', 'Reason', 'Type', 'Status', 'Source', 'Open Date', 'Closed Date')
+  m$`Open Date` = format(m$`Open Date`, "%Y-%m-%d")
+  m$`Closed Date` = format(m$`Closed Date`, "%Y-%m-%d")
+  m = m[order(m$`Open Date`, decreasing=TRUE),]
+  pander(m)
+} else cat('None\n')
+```
+
+#### Code Enforcement - Building and Property Violations
+
+```{r}
+
+
+code = NULL
+for (i in seq(1, length(pid), 5))
+{
+  pids = na.omit(pid[i:(i+4)])
+  where_clause = paste0('$where=', paste0('property_id=', pids, collapse=' OR '))
+  code_url = paste0('https://data.cityofboston.gov/resource/8sq6-p7et.csv?', where_clause)
+  
+  code1 = read.socrata(code_url)
+  if (nrow(code1) > 0) code = rbind(code, code1)
+}
+
+if (!is.null(code) && nrow(code) > 0)
+{ 
+  c = code[, c('Description', 'Status', 'Status_DTTM')]
+  names(c)[3] = 'Date'
+  c$Date = format(c$Date, "%Y-%m-%d")
+  c = c[order(c$Date, decreasing=TRUE),]
+  pander(c)
+} else cat('None\n')
+```
+
+```{r}
+
+# Map
+if (!is.na(lat) && !is.na(lon))
+{
+  map = leaflet() %>% addTiles() %>% 
+  setView(lon, lat, zoom = 14) %>%
+    addMarkers(lon, lat)
+  map
+}
+```
+
